@@ -13,7 +13,6 @@ pub struct Game {
     grid: ArrayD<f32>,
 }
 
-
 impl Game {
     pub fn new(payoff_grid: ArrayD<f32>) -> Option<Game> {
         if Game::valid_shape(&payoff_grid) {
@@ -44,10 +43,10 @@ impl Game {
     }
 
     pub fn strategies(&self, player: Player) -> impl Iterator<Item=Strategy> {
-        0..(self.grid.shape()[player]) // TODO use num_strats
+        0..self.num_strats(player)
     }
 
-    fn num_strats(&self, player: Player) -> Strategy {
+    fn num_strats(&self, player: Player) -> usize {
         self.grid.shape()[player]
     }
 

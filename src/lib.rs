@@ -167,16 +167,21 @@ fn index_array<'a>(shape: &'a [usize]) -> GameIndex {
 mod test {
     use super::*;
 
+    /// Constructs a version of the prisoners dilemma
+    /// **Players** 2
+    /// **Actions** all players can either tell (action 0) or withhold info (action 1)
+    /// **Utilities** negative number of years that player spends in jail (negative, since less is
+    /// better)
     fn prisoners_dilemma() -> Game {
         let pd_grid = ArrayD::from_shape_fn(vec![2,2,2], |dim| {
-            10.0 - match (dim[0], dim[1], dim[2]) {
+            -1.0 * match (dim[0], dim[1], dim[2]) {
                 (0, 0, _) => 5.0,
                 (1, 0, 0) => 7.0,
                 (1, 0, 1) => 0.0,
                 (0, 1, 0) => 0.0,
                 (0, 1, 1) => 7.0,
                 (1, 1, _) => 2.0,
-                _ => 100.0,
+                _ => panic!("Unexpected index while constructing prisoner's dilemma"),
             }
         });
 

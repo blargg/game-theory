@@ -53,11 +53,14 @@ impl Game {
     /// Determines if s1 strictly dominates s2 for the given player
     /// This means that for all other players choices, s1 gives a better payoff than s2
     pub fn strictly_dominates(&self, player: Player, s1: Strategy, s2: Strategy) -> bool {
-        self.compare_strats(|v1, v2| v1 > v2, player, s1, s2)
+        let util_comp = self.compare_strats(player, s1, s2);
+        util_comp.iter().all(|(v1, v2)| v1 > v2)
     }
 
     pub fn weakly_dominates(&self, player: Player, s1: Strategy, s2: Strategy) -> bool {
-        self.compare_strats(|v1, v2| v1 >= v2, player, s1, s2)
+        let util_comp = self.compare_strats(player, s1, s2);
+        util_comp.iter().all(|(v1, v2)| v1 >= v2) &&
+            util_comp.iter().any(|(v1, v2)| v1 > v2)
     }
 
     fn dominates(&self, strictly: bool, player: Player, s1: Strategy, s2: Strategy) -> bool {
@@ -68,7 +71,9 @@ impl Game {
         }
     }
 
-    fn compare_strats<F: Fn(f32, f32) -> bool>(&self, comparison: F, player: Player, s1: Strategy, s2: Strategy) -> bool {
+    /// Zips together two strategies into a view to compare utilities for other player strategies.
+    /// **Returns** an array view of pairs of utilities from (s1, s2) respectively.
+    fn compare_strats<'a>(&'a self, player: Player, s1: Strategy, s2: Strategy) -> ArrayD<(f32, f32)> {
         let payoff_axis = Axis(self.grid.shape().len() - 1);
         let player_payoffs = self
             .grid
@@ -77,14 +82,14 @@ impl Game {
             .index_axis(Axis(player), s1);
         let p2 = player_payoffs
             .index_axis(Axis(player), s2);
-        let mut comp = ArrayD::from_elem(p1.shape(), false);
+        let mut comp = ArrayD::from_elem(p1.shape(), (0.0, 0.0));
         Zip::from(&mut comp)
             .and(p1)
             .and(p2)
             .apply(|c, v1, v2| {
-                *c = comparison(*v1, *v2);
+                *c = (*v1, *v2);
             });
-        comp.iter().all(|i| *i)
+        comp
     }
 
     pub fn strict_iterative_removal(&self) -> (Game, GameIndex) {

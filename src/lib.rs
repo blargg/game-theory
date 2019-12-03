@@ -60,6 +60,13 @@ impl Game {
         self.compare_strats(|v1, v2| v1 >= v2, player, s1, s2)
     }
 
+    fn dominates(&self, strictly: bool, player: Player, s1: Strategy, s2: Strategy) -> bool {
+        if strictly {
+            self.strictly_dominates(player, s1, s2)
+        } else {
+            self.weakly_dominates(player, s1, s2)
+        }
+    }
 
     fn compare_strats<F: Fn(f32, f32) -> bool>(&self, comparison: F, player: Player, s1: Strategy, s2: Strategy) -> bool {
         let payoff_axis = Axis(self.grid.shape().len() - 1);
@@ -80,16 +87,24 @@ impl Game {
         comp.iter().all(|i| *i)
     }
 
+    pub fn strict_iterative_removal(&self) -> (Game, GameIndex) {
+        self.iterative_removal(true)
+    }
+
+    pub fn weak_iterative_removal(&self) -> (Game, GameIndex) {
+        self.iterative_removal(false)
+    }
+
     /// Constructs a new game by finding all the strictly dominated strategies, removing them, then
     /// repeating until there are no more.
-    pub fn iterative_removal(&self) -> (Game, GameIndex) {
+    pub fn iterative_removal(&self, strictly: bool) -> (Game, GameIndex) {
         let mut index_shape = Vec::from(self.grid.shape());
         index_shape.pop();
         let mut index = index_array(&index_shape);
         let mut mut_game = self.clone();
 
         loop {
-            let dom_strats = mut_game.all_dominated_strats();
+            let dom_strats = mut_game.all_dominated_strats(strictly);
             let (updated_game, updated_index, any_updates) = mut_game.remove_strats(index, dom_strats);
             mut_game = updated_game;
             index = updated_index;
@@ -123,7 +138,7 @@ impl Game {
     /// Enumerates all the strategies that are strictly dominated by at least one other strategy.
     /// If a player is in the game, but does not have a value in the map, it means that the player
     /// has not dominated strategies.
-    fn all_dominated_strats(&self) -> BTreeMap<Player, BTreeSet<Strategy>> {
+    fn all_dominated_strats(&self, strictly: bool) -> BTreeMap<Player, BTreeSet<Strategy>> {
         let mut by_player = BTreeMap::new();
         for player in self.players() {
             let mut dominated_strats = BTreeSet::new();
@@ -131,7 +146,7 @@ impl Game {
                 let mut alts = (0..self.num_strats(player))
                     .filter(|s| *s != strat);
                 let dominates = |alt_strat| {
-                    self.strictly_dominates(player, alt_strat, strat)
+                    self.dominates(strictly, player, alt_strat, strat)
                 };
                 if alts.any(dominates) {
                     dominated_strats.insert(strat);
@@ -188,6 +203,32 @@ mod test {
         Game::new(pd_grid).unwrap()
     }
 
+    /// Constructs an example game where multiple rounds of elimination must take place.
+    fn multiple_weak_elim() -> Game {
+        let grid = ArrayD::from_shape_fn(vec![3, 3, 2], |dim| {
+            match (dim[0], dim[1], dim[2]) {
+                (0, 0, _) => 1.0,
+                (0, 1, 0) => 0.0,
+                (0, 1, 1) => 1.0,
+                (0, 2, 0) => 3.0,
+                (0, 2, 1) => 1.0,
+                (1, 0, 0) => 1.0,
+                (1, 0, 1) => 0.0,
+                (1, 1, _) => 2.0,
+                (1, 2, 0) => 1.0,
+                (1, 2, 1) => 3.0,
+                (2, 0, 0) => 1.0,
+                (2, 0, 1) => 3.0,
+                (2, 1, 0) => 3.0,
+                (2, 1, 1) => 1.0,
+                (2, 2, _) => 2.0,
+                _ => panic!("Unhandled index when constructing multiple weak elim game"),
+            }
+        });
+
+        Game::new(grid).unwrap()
+    }
+
     #[test]
     fn test_strictly_dominates() {
         let pd = prisoners_dilemma();
@@ -211,7 +252,7 @@ mod test {
     #[test]
     fn test_all_dominated_starts() {
         let pd = prisoners_dilemma();
-        let dominated_strats = pd.all_dominated_strats();
+        let dominated_strats = pd.all_dominated_strats(true);
         assert_eq!(dominated_strats.iter().count(), 2, "2 unique players should have dominated starts");
         assert!(dominated_strats[&0].contains(&1), "player 0, strat 1 is dominated by strat 0");
     }
@@ -219,7 +260,7 @@ mod test {
     #[test]
     fn test_iterative_removal() {
         let pd = prisoners_dilemma();
-        let (reduced, lookup) = pd.iterative_removal();
+        let (reduced, lookup) = pd.strict_iterative_removal();
 
         assert!(reduced.is_valid());
 
@@ -230,6 +271,20 @@ mod test {
         // the strategy should be they both tell
         assert_eq!(lookup[Dim((0,0,0))], 0);
         assert_eq!(lookup[Dim((0,0,1))], 0);
+    }
+
+    #[test]
+    fn iterative_removal_multiple_test() {
+        let game = multiple_weak_elim();
+        let (reduced, lookup) = game.weak_iterative_removal();
+
+        // the final game only has 1 strategy per player
+        assert_eq!(reduced.strategies(0).count(), 1);
+        assert_eq!(reduced.strategies(1).count(), 1);
+
+        // the remaining strategies should be (0,0) in the original game
+        assert_eq!(lookup[Dim((0,0,0))], 0, "player 0's remaining strat should be 0 in the original game");
+        assert_eq!(lookup[Dim((0,0,1))], 0, "player 1's remaining strat should be 0 in the original game");
     }
 
     #[test]

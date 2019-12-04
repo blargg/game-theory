@@ -1,3 +1,4 @@
+use float_cmp::*;
 use ndarray::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -167,6 +168,61 @@ impl Game {
 
         by_player
     }
+
+    /// Determines if two strategies are identical, meaning for all players, the given players
+    /// choice of s1 or s2 is effectivly the same.
+    pub fn identical_utils(&self, player: Player, s1: Strategy, s2: Strategy) -> bool {
+        let u1 = self
+            .grid
+            .index_axis(Axis(player), s1);
+        let u2 = self
+            .grid
+            .index_axis(Axis(player), s2);
+
+        let mut all_eq = true;
+        Zip::from(u1)
+            .and(u2)
+            .apply(|u1, u2| {
+                all_eq = all_eq && approx_eq!(f32, *u1, *u2);
+            });
+
+        all_eq
+    }
+
+    /// Finds all the duplicate strategies. That is to say, all strategies that have some identical
+    /// strategy in the game, except for on representative version of that strat.
+    fn all_duplicates(&self) -> BTreeMap<Player, BTreeSet<Strategy>> {
+        let mut by_player = BTreeMap::new();
+        for player in self.players() {
+            let mut duplicate_strats = BTreeSet::new();
+            for strat in self.strategies(player) {
+                for alt in strat+1..self.num_strats(player) {
+                    if self.identical_utils(player, strat, alt) {
+                        duplicate_strats.insert(alt);
+                    }
+                }
+            }
+
+            if duplicate_strats.len() > 0 {
+                by_player.insert(player, duplicate_strats);
+            }
+        }
+
+        by_player
+    }
+
+    pub fn remove_duplicate_strats(self, index: GameIndex) -> (Game, GameIndex) {
+        let dups = self.all_duplicates();
+        let (new_game, new_index, _any_removed) = self.remove_strats(index, dups);
+        (new_game, new_index)
+    }
+
+    /// Constructs an index for the current shape of the game.
+    /// See `index_array` for more information.
+    pub fn index(&self) -> GameIndex {
+        let shape = self.grid.shape();
+        index_array(shape)
+    }
 }
 
 /// Constructs an index array of the given shape with and added dimention for the index values.
@@ -228,6 +284,19 @@ mod test {
                 (2, 1, 1) => 1.0,
                 (2, 2, _) => 2.0,
                 _ => panic!("Unhandled index when constructing multiple weak elim game"),
+            }
+        });
+
+        Game::new(grid).unwrap()
+    }
+
+    fn duplicate_strats() -> Game {
+        let grid = ArrayD::from_shape_fn(vec![3,1,2], |dim| {
+            match (dim[0], dim[1], dim[2]) {
+                (0, 0, _) => 0.0,
+                (1, 0, _) => 1.0,
+                (2, 0, _) => 1.0,
+                _ => panic!("Unhandled index when constructing duplicate strats game"),
             }
         });
 
@@ -306,5 +375,15 @@ mod test {
                 assert_eq!(index[Dim((row, col, 1))], col);
             }
         }
+    }
+
+    #[test]
+    fn remove_duplicate_strats_test() {
+        let game = duplicate_strats();
+        let index = game.index();
+
+        let (reduced, _index) = game.remove_duplicate_strats(index);
+        assert_eq!(reduced.strategies(0).count(), 2);
+        assert_eq!(reduced.strategies(1).count(), 1);
     }
 }

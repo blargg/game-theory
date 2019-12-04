@@ -7,4 +7,5 @@ edition = "2018"
 [lib]
 
 [dependencies]
+float-cmp = "0.6.0"
 ndarray = "0.13"

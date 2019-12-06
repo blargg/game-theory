@@ -43,6 +43,10 @@ impl Game {
         0..(self.grid.shape().len() - 1)
     }
 
+    fn num_players(&self) -> usize {
+        self.grid.shape().len() - 1
+    }
+
     pub fn strategies(&self, player: Player) -> impl Iterator<Item=Strategy> {
         0..self.num_strats(player)
     }
@@ -223,6 +227,39 @@ impl Game {
         let shape = self.grid.shape();
         index_array(shape)
     }
+
+    /// Checks if the given strategic profile is a nash equilibrium.
+    pub fn is_nash_eq(&self, prof: &Vec<Strategy>) -> bool {
+        assert_eq!(prof.len(), self.num_players(), "profile must have a strategy selected for every player");
+
+        let strict_highest = |player| {
+            self.stict_highest_util(player, prof[player], prof)
+        };
+
+        self.players().all(strict_highest)
+    }
+
+    /// Checks if for the given player and strategic profile, that the selected strategy **strat**
+    /// is the highest utility strategy, assuming only **player** can change their strategy
+    fn stict_highest_util(&self, player: Player, strat: Strategy, prof: &Vec<Strategy>) -> bool {
+        let payoff_axis = Axis(self.grid.shape().len() - 1);
+        let player_payoffs = self
+            .grid
+            .index_axis(payoff_axis, player);
+        let selected = Dim(prof.clone());
+        let selected_val = player_payoffs[selected];
+        let mut cur_index = prof.clone();
+        for alt_strat in self.strategies(player).filter(|st| *st != strat) {
+            cur_index[player] = alt_strat;
+            let cur_value = player_payoffs[Dim(cur_index.clone())];
+
+            if cur_value >= selected_val {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 /// Constructs an index array of the given shape with and added dimention for the index values.
@@ -385,5 +422,13 @@ mod test {
         let (reduced, _index) = game.remove_duplicate_strats(index);
         assert_eq!(reduced.strategies(0).count(), 2);
         assert_eq!(reduced.strategies(1).count(), 1);
+    }
+
+    #[test]
+    fn is_nash_eq_test() {
+        let game = prisoners_dilemma();
+        assert!(game.is_nash_eq(&vec![0,0]), "both telling should be a nash eq");
+        assert!(!game.is_nash_eq(&vec![1,1]), "both cooperating should not be a nash eq");
+        assert!(!game.is_nash_eq(&vec![0,1]), "one telling, one coop should not be a nash eq");
     }
 }

@@ -9,6 +9,31 @@ pub type Player = usize;
 pub type Strategy = usize;
 pub type GameIndex = ArrayD<usize>;
 
+/// Defines the utility value for all players.
+#[derive(Debug, Clone)]
+pub struct Util {
+    values: Vec<f32>,
+}
+
+impl Util {
+    /// Constructs a new util, using the given values. The values are 0 indexed (first value is
+    /// player 0).
+    pub fn from_vec(values: Vec<f32>) -> Util {
+        Util {
+            values,
+        }
+    }
+
+    /// Gets the Util for a given player. If out of bounds, the util is 0.
+    pub fn for_player(&self, player: Player) -> f32 {
+        if player < self.values.len() {
+            self.values[player]
+        } else {
+            0.0
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Game {
     grid: ArrayD<f32>,
@@ -24,6 +49,21 @@ impl Game {
             )
         } else {
             None
+        }
+    }
+
+    pub fn from_util_array(util_array: ArrayD<Util>) -> Game {
+        let util_axis = util_array.shape().len();
+        let mut exp_shape: Vec<_> = util_array.shape().iter().cloned().collect();
+        exp_shape.push(util_array.shape().len());
+        let expanded_array = ArrayD::from_shape_fn(exp_shape, |i| {
+            let player = i[util_axis];
+            let util_index = i.remove_axis(Axis(util_axis));
+            util_array[util_index].for_player(player)
+        });
+
+        Game {
+            grid: expanded_array,
         }
     }
 
@@ -338,6 +378,30 @@ mod test {
         });
 
         Game::new(grid).unwrap()
+    }
+
+    #[test]
+    fn from_util_array_test() {
+        let util_vec: Vec<Util> = vec![
+            Util::from_vec(vec![0.0, 1.0]),
+            Util::from_vec(vec![0.0, 0.0]),
+            Util::from_vec(vec![0.0, 0.0]),
+            Util::from_vec(vec![4.0, 4.1]),
+        ];
+        let utils = ArrayD::from_shape_vec(vec![2, 2], util_vec)
+        .expect("from_shape_vec should work");
+
+        let game = Game::from_util_array(utils);
+        assert_eq!(0.0, game.grid[Dim((0,0,0))], "action 0,0, player 0 should be 0.0");
+
+        let val = game.grid[Dim((0,0,1))];
+        assert!(val > 0.9 && val < 1.1, "action 0,0, player 1 should be 1.0");
+
+        let val = game.grid[Dim((1,1,0))];
+        assert!(val > 3.9 && val < 4.05, "action 2,2, player 0 should be 4.0");
+
+        let val = game.grid[Dim((1,1,1))];
+        assert!(val > 4.05 && val < 4.15, "action 2,2, player 1 should be 4.1");
     }
 
     #[test]

@@ -95,6 +95,25 @@ impl Game {
         self.grid.shape()[player]
     }
 
+    pub fn util(&self, player: Player, strat_index: &Vec<Strategy>) -> f32 {
+        let mut player_util_index = strat_index.clone();
+        player_util_index.push(player);
+
+        let d = Dim(player_util_index);
+        self.grid[d]
+    }
+
+    /// Returns the utilties for all players for the given strategic index
+    pub fn utilities(&self, strat_index: &Vec<Strategy>) -> Util {
+        let mut util = Vec::with_capacity(self.num_players());
+        for player in self.players() {
+            let player_util = self.util(player, &strat_index);
+            util.push(player_util);
+        }
+
+        Util::from_vec(util)
+    }
+
     /// Determines if s1 strictly dominates s2 for the given player
     /// This means that for all other players choices, s1 gives a better payoff than s2
     pub fn strictly_dominates(&self, player: Player, s1: Strategy, s2: Strategy) -> bool {
@@ -402,6 +421,21 @@ mod test {
 
         let val = game.grid[Dim((1,1,1))];
         assert!(val > 4.05 && val < 4.15, "action 2,2, player 1 should be 4.1");
+    }
+
+    #[test]
+    fn util_test() {
+        let game = prisoners_dilemma();
+        let both_tell_util = game.util(0, &vec![0,0]);
+        assert!(approx_eq!(f32, -5.0, both_tell_util), "Both telling should have util of -5.0");
+    }
+
+    #[test]
+    fn utils_test() {
+        let game = prisoners_dilemma();
+        let one_tell_util = game.utilities(&vec![0,1]);
+        assert!(approx_eq!(f32, 0.0, one_tell_util.for_player(0)), "Telling player should have util of 0.0");
+        assert!(approx_eq!(f32, -7.0, one_tell_util.for_player(1)), "Quiet player should have util of -7.0");
     }
 
     #[test]
